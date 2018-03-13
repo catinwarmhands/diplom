@@ -30,3 +30,7 @@
 
 #output files
 /img_out
+
+#idea stuff
+/.idea
+/venv

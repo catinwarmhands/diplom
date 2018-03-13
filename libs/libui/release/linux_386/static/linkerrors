@@ -1,2 +1,0 @@
-`__x86.get_pc_thunk.ax' referenced in section `.text' of ../out/libui.a(libui-combined.o): defined in discarded section `.text.__x86.get_pc_thunk.ax[__x86.get_pc_thunk.ax]' of ../out/libui.a(libui-combined.o)
-`__x86.get_pc_thunk.bx' referenced in section `.text' of ../out/libui.a(libui-combined.o): defined in discarded section `.text.__x86.get_pc_thunk.bx[__x86.get_pc_thunk.bx]' of ../out/libui.a(libui-combined.o)
