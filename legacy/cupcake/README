@@ -1,0 +1,17 @@
+/////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////
+
+	Cupcake Compiler
+		By Julgodis (Jonathan Wase)
+
+/////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////
+
+Check out the github for more information:
+	https://github.com/Julgodis/Cupcake-Compiler
+
+
+Good things to know:
+	* Do not delete 'output' folder. If you delete the compiler will not be able to generate a c++ file.
+	* The 'target' folder has c++ code that is required to be added for the generated c++ file to build.
+
