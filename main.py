@@ -2,138 +2,107 @@ from math import *
 from PIL import Image
 from numpy import *
 import matplotlib.pyplot as plt
-from matplotlib import colors
-from statistics import mean
+import cv2
 
-CL = [(1 + sqrt(3)) / (4 * sqrt(2)),
-      (3 + sqrt(3)) / (4 * sqrt(2)),
-      (3 - sqrt(3)) / (4 * sqrt(2)),
-      (1 - sqrt(3)) / (4 * sqrt(2))]
-
-CL = [1 / sqrt(2), 1 / sqrt(2)]
+from haar import *
 
 
-def hpf_coeffs(CL):
-    N = len(CL)  # Количество коэффициентов
-    CH = [(-1) ** k * CL[N - k - 1]  # Коэффициенты в обратном порядке с чередованием знака
-          for k in range(N)]
-    return CH
+def printstr(str):
+    print(str, end='', flush=True)
 
 
-def pconv(data, CL, CH, delta=0):
-    assert (len(CL) == len(CH))  # Размеры списков коэффициентов должны быть равны
-    N = len(CL)
-    M = len(data)
-    out = []  # Список с результатом, пока пустой
-    for k in range(0, M, 2):  # Перебираем числа 0, 2, 4…
-        sL = 0  # Низкочастотный коэффициент
-        sH = 0  # Высокочастотный коэффициент
-        for i in range(N):  # Находим сами взвешенные суммы
-            sL += data[(k + i - delta) % M] * CL[i]
-            sH += data[(k + i - delta) % M] * CH[i]
-        out.append(sL)  # Добавляем коэффициенты в список
-        out.append(sH)
-    return out
+def cv2_output_images(images, colums=3, width=700):
+    cols = len(images)
+    rows = ceil(cols / colums)
+    if cols < colums:
+        rows = 1
+    if cols > colums:
+        cols = colums
+
+    w, h = images[0].size
+
+    if rows > 1:
+        while len(images) % colums != 0:
+            images.append(Image.fromarray(zeros([w, h], dtype=uint8)).convert('L'))
+
+    for i, image in enumerate(images):
+        if len(image.getbands()) == 1:
+            images[i] = cv2.cvtColor(array(image), cv2.COLOR_GRAY2BGR)
+        else:
+            images[i] = array(image)[..., ::-1]
+
+    result_rows = []
+    temp = None
+    for i, image in enumerate(images):
+        if temp is None:
+            temp = image
+        else:
+            temp = concatenate((temp, image), axis=1)
+
+        if ((i + 1) % colums == 0 and temp is not None) or i == len(images) - 1:
+            result_rows.append(temp)
+            temp = None
+
+    result = result_rows[0]
+    for i in range(1, len(result_rows)):
+        result = concatenate((result, result_rows[i]), axis=0)
+
+    name = 'Result'
+    mult = width / (w * cols)
+
+    cv2.namedWindow(name, cv2.WINDOW_NORMAL)
+    cv2.resizeWindow(name, width, int(h * rows * mult))
+
+    while True:
+        cv2.imshow(name, result)
+        if cv2.waitKey() or cv2.getWindowProperty(name, 1) == -1:
+            break
 
 
-def icoeffs(CL, CH):
-    assert (len(CL) == len(CH))  # Размеры списков коэффициентов должны быть равны
-    iCL = []  # Коэффициенты первой строки
-    iCH = []  # Коэффициенты второй строки
-    for k in range(0, len(CL), 2):
-        iCL.extend([CL[k - 2], CH[k - 2]])
-        iCH.extend([CL[k - 1], CH[k - 1]])
-    return iCL, iCH
+def plt_output_images(images):
+    cols = len(images)
+    rows = cols // 3 + 1
+    if cols > 3:
+        cols = 3
 
+    for i, image in enumerate(images):
+        plt.subplot(rows, cols, i + 1)
+        plt.imshow(image)
 
-def dwt2(image, CL):
-    CH = hpf_coeffs(CL)  # Вычисляем недостающие коэффициенты
-    w, h = image.shape  # Размеры изображения
-    imageT = image.copy()  # Копируем исходное изображение для преобразования
-    for i in range(h):  # Обрабатываем строки
-        imageT[i, :] = pconv(imageT[i, :], CL, CH)
-    for i in range(w):  # Обрабатываем столбцы
-        imageT[:, i] = pconv(imageT[:, i], CL, CH)
-
-    # Переупорядочиваем столбцы и строки
-    data = imageT.copy()
-    data[0:h // 2, 0:w // 2] = imageT[0:h:2, 0:w:2]
-    data[h // 2:h, 0:w // 2] = imageT[1:h:2, 0:w:2]
-    data[0:h // 2, w // 2:w] = imageT[0:h:2, 1:w:2]
-    data[h // 2:h, w // 2:w] = imageT[1:h:2, 1:w:2]
-    return data
-
-
-def rec_dwt2(image, CL):
-    data = image.copy()
-    w, h = data.shape
-    while w >= len(CL) and h >= len(CL):
-        data[0:w, 0:h] = dwt2(data[0:w, 0:h], CL)
-        w //= 2
-        h //= 2
-    return data
-
-
-def idwt2(data, CL):
-    w, h = data.shape  # Размеры изображения
-
-    # Переупорядочиваем столбцы и строки обратно
-    imageT = data.copy()
-    imageT[0:h:2, 0:w:2] = data[0:h // 2, 0:w // 2]
-    imageT[1:h:2, 0:w:2] = data[h // 2:h, 0:w // 2]
-    imageT[0:h:2, 1:w:2] = data[0:h // 2, w // 2:w]
-    imageT[1:h:2, 1:w:2] = data[h // 2:h, w // 2:w]
-
-    CH = hpf_coeffs(CL)
-    iCL, iCH = icoeffs(CL, CH)
-    image = imageT.copy()  # Копируем исходное изображение для преобразования
-    for i in range(w):  # Обрабатывем столбцы
-        image[:, i] = pconv(image[:, i], iCL, iCH, delta=len(iCL) - 2)
-    for i in range(h):  # Обрабатывем строки
-        image[i, :] = pconv(image[i, :], iCL, iCH, delta=len(iCL) - 2)
-
-    return image
-
-
-def rec_idwt2(image, CL):
-    data = image.copy()
-    w, h = len(CL), len(CL)
-
-    ww, hh = data.shape
-    while w <= ww and h <= hh:
-        data[0:w, 0:h] = idwt2(data[0:w, 0:h], CL)
-        w *= 2
-        h *= 2
-    return data
-
-
-
+    plt.show()
 
 
 
 recursive = True
-threshold = 0.55
+threshold = 0.15
 
-image = Image.open('img/lena.png') #.convert('L')
+filename = 'img/hello_small.jpg'
+# filename = 'img/lena.png'
+# filename = 'img/grad3.png'
 
-print("image size:", image.size)
-print("channels count:", len(image.getbands()))
+image = Image.open(filename)  # .convert('L')
+
+print(filename, ":", image.size, "*", len(image.getbands()))
 
 w, h = image.size
-mode = "".join(image.getbands())
-depth = len(mode)
-total_size = w*h*depth
-
-fig, axes = plt.subplots(nrows=1, ncols=3)
+colormode = "".join(image.getbands())
+depth = len(colormode)
+total_size = w * h * depth
 
 channels_spectre = []
 channels_restored = []
 
 s = 0
 
+printstr("Processing ")
 for i in range(depth):
+    printstr(colormode[i])
+
+
     def append(x, a):
         x.append(Image.fromarray(a * 255).convert('L'))
+        # x.append(a)
+
 
     a = array(image.getchannel(i)) / 255
 
@@ -147,19 +116,12 @@ for i in range(depth):
 
     append(channels_restored, a)
 
-print("removed {} of {} ({}%)".format(s, total_size, round(s/total_size * 100, 3)))
+print()
 
-image_spectre = Image.merge(mode, channels_spectre)
-image_restored = Image.merge(mode, channels_restored)
+print("removed {} of {} ({}%)".format(s, total_size, round(s / total_size * 100, 3)))
 
-plt.subplot(1, 3, 1)
-plt.imshow(image)
+image_spectre = Image.merge(colormode, channels_spectre)
+image_restored = Image.merge(colormode, channels_restored)
 
-plt.subplot(1, 3, 2)
-plt.imshow(image_spectre)
-
-plt.subplot(1, 3, 3)
-plt.imshow(image_restored)
-
-plt.show()
+cv2_output_images([image, image_spectre, image_restored], colums=3, width=1000)
 
