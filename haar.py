@@ -41,14 +41,14 @@ def icoeffs(CL, CH):
     return iCL, iCH
 
 
-def dwt2(image, CL):
+def dwt2(image, CL, delta=0):
     CH = hpf_coeffs(CL)  # Вычисляем недостающие коэффициенты
     w, h = image.shape  # Размеры изображения
     imageT = image.copy()  # Копируем исходное изображение для преобразования
     for i in range(h):  # Обрабатываем строки
-        imageT[i, :] = pconv(imageT[i, :], CL, CH)
+        imageT[i, :] = pconv(imageT[i, :], CL, CH, delta)
     for i in range(w):  # Обрабатываем столбцы
-        imageT[:, i] = pconv(imageT[:, i], CL, CH)
+        imageT[:, i] = pconv(imageT[:, i], CL, CH, delta)
 
     # Переупорядочиваем столбцы и строки
     data = imageT.copy()
@@ -62,7 +62,8 @@ def dwt2(image, CL):
 def rec_dwt2(image, CL):
     data = image.copy()
     w, h = data.shape
-    while w >= len(CL) and h >= len(CL):
+    for i in range(2):
+    # while w >= len(CL) and h >= len(CL):
         data[0:w, 0:h] = dwt2(data[0:w, 0:h], CL)
         w //= 2
         h //= 2
@@ -100,3 +101,90 @@ def rec_idwt2(image, CL):
         w *= 2
         h *= 2
     return data
+
+
+# ####################### MY ########################## #
+
+def fht_1d(a):
+    result = [None] * len(a)
+    n = len(a) // 2
+
+    for i in range(n):
+        summ = a[2*i] + a[2*i+1]
+        diff = a[2*i] - a[2*i+1]
+        result[i]   = summ * 1/2
+        result[n+i] = diff * 1/2
+
+    return result
+
+
+def inv_fht_1d(a):
+    # http://vestnik.mstu.edu.ru/v12_2_n35/articles/03_zhar.pdf
+    result = [None] * len(a)
+    n = len(a) // 2
+
+    for i in range(n):
+        summ = a[i] + a[i+n]
+        diff = a[i] - a[i+n]
+        result[2*i] = summ
+        result[2*i+1] = diff
+
+    return result
+
+
+def map_for_each_row_and_column(f, a):
+    h, w = a.shape
+    for i in range(h):
+        a[i, :] = f(a[i, :])
+    for j in range(w):
+        a[:, j] = f(a[:, j])
+    return a
+
+
+def fht_2d(a, steps=None):
+    if steps == 0:
+        return a
+
+    h, w = a.shape
+    step = 0
+    while w >= 2 and h >= 2:
+        a[:h, :w] = map_for_each_row_and_column(fht_1d, a[:h, :w])
+        w //= 2
+        h //= 2
+        step += 1
+        if steps is not None and step >= steps:
+            break
+    return a
+
+
+def inv_fht_2d(a, steps=None):
+    if steps == 0:
+        return a
+
+    # fix for non-square images
+    def getwh(a, steps):
+        h, w = a.shape
+        step = 0
+        while w >= 2 and h >= 2:
+            w //= 2
+            h //= 2
+            step += 1
+            if steps is not None and step >= steps:
+                break
+        w *= 2
+        h *= 2
+        return w, h
+
+    w, h = getwh(a, steps)
+
+    hh, ww = a.shape
+
+    step = 0
+    while w <= ww and h <= hh:
+        a[:h, :w] = map_for_each_row_and_column(inv_fht_1d, a[:h, :w])
+        w *= 2
+        h *= 2
+        step += 1
+        if steps is not None and step >= steps:
+            break
+    return a

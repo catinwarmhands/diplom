@@ -3,84 +3,21 @@ from PIL import Image
 from numpy import *
 import matplotlib.pyplot as plt
 import cv2
-
+from output_images import *
 from haar import *
 
 
 def printstr(str):
     print(str, end='', flush=True)
 
+recursive = False
+threshold = 0.45
 
-def cv2_output_images(images, colums=3, width=700):
-    cols = len(images)
-    rows = ceil(cols / colums)
-    if cols < colums:
-        rows = 1
-    if cols > colums:
-        cols = colums
-
-    w, h = images[0].size
-
-    if rows > 1:
-        while len(images) % colums != 0:
-            images.append(Image.fromarray(zeros([w, h], dtype=uint8)).convert('L'))
-
-    for i, image in enumerate(images):
-        if len(image.getbands()) == 1:
-            images[i] = cv2.cvtColor(array(image), cv2.COLOR_GRAY2BGR)
-        else:
-            images[i] = array(image)[..., ::-1]
-
-    result_rows = []
-    temp = None
-    for i, image in enumerate(images):
-        if temp is None:
-            temp = image
-        else:
-            temp = concatenate((temp, image), axis=1)
-
-        if ((i + 1) % colums == 0 and temp is not None) or i == len(images) - 1:
-            result_rows.append(temp)
-            temp = None
-
-    result = result_rows[0]
-    for i in range(1, len(result_rows)):
-        result = concatenate((result, result_rows[i]), axis=0)
-
-    name = 'Result'
-    mult = width / (w * cols)
-
-    cv2.namedWindow(name, cv2.WINDOW_NORMAL)
-    cv2.resizeWindow(name, width, int(h * rows * mult))
-
-    while True:
-        cv2.imshow(name, result)
-        if cv2.waitKey() or cv2.getWindowProperty(name, 1) == -1:
-            break
-
-
-def plt_output_images(images):
-    cols = len(images)
-    rows = cols // 3 + 1
-    if cols > 3:
-        cols = 3
-
-    for i, image in enumerate(images):
-        plt.subplot(rows, cols, i + 1)
-        plt.imshow(image)
-
-    plt.show()
-
-
-
-recursive = True
-threshold = 0.15
-
-filename = 'img/hello_small.jpg'
+# filename = 'img/hello_small.jpg'
 # filename = 'img/lena.png'
-# filename = 'img/grad3.png'
+filename = 'img/pearl.png'
 
-image = Image.open(filename)  # .convert('L')
+image = Image.open(filename)#.convert('L')
 
 print(filename, ":", image.size, "*", len(image.getbands()))
 
@@ -89,39 +26,46 @@ colormode = "".join(image.getbands())
 depth = len(colormode)
 total_size = w * h * depth
 
-channels_spectre = []
-channels_restored = []
 
-s = 0
+def fht_2d_image(image, steps=None):
+    colormode = "".join(image.getbands())
+    depth = len(colormode)
+    printstr("Processing ")
+    channels = []
+    for i in range(depth):
+        printstr(colormode[i])
+
+        def append(x, a):
+            x.append(Image.fromarray(a).convert('L'))
+
+        a = array(image.getchannel(i)) * float(1.0)
+
+        a = fht_2d(a, steps)
+        append(channels, a)
+    print()
+    return Image.merge(colormode, channels)
+
+
+# plt_output_images([fht_2d_image(image, steps) for steps in range(3)], 5)
 
 printstr("Processing ")
+channels_spectre = []
+channels_restored = []
 for i in range(depth):
     printstr(colormode[i])
 
-
     def append(x, a):
-        x.append(Image.fromarray(a * 255).convert('L'))
-        # x.append(a)
+        x.append(Image.fromarray(a).convert('L'))
 
+    a = array(image.getchannel(i)) * float(1.0)
 
-    a = array(image.getchannel(i)) / 255
-
-    a = rec_dwt2(a, CL) if recursive else dwt2(a, CL)
+    a = fht_2d(a)
     append(channels_spectre, a)
 
-    a[abs(a) < threshold] = 0
-    s += sum(a == 0)
-
-    a = rec_idwt2(a, CL) if recursive else idwt2(a, CL)
-
+    a = inv_fht_2d(a)
     append(channels_restored, a)
-
 print()
+spectre = Image.merge(colormode, channels_spectre)
+restored = Image.merge(colormode, channels_restored)
 
-print("removed {} of {} ({}%)".format(s, total_size, round(s / total_size * 100, 3)))
-
-image_spectre = Image.merge(colormode, channels_spectre)
-image_restored = Image.merge(colormode, channels_restored)
-
-cv2_output_images([image, image_spectre, image_restored], colums=3, width=1000)
-
+plt_output_images([spectre, restored])
